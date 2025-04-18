@@ -1,0 +1,41 @@
+/* Custom CSS styles */
+.App {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.min-vh-100 {
+  min-height: 100vh;
+}
+
+/* Card hover effect */
+.card {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
+}
+
+/* Button styling */
+.btn-primary {
+  background-color: #4a6fdc;
+  border-color: #4a6fdc;
+}
+
+.btn-primary:hover {
+  background-color: #3a5bc0;
+  border-color: #3a5bc0;
+}
+
+/* Form styling */
+.form-control:focus {
+  border-color: #4a6fdc;
+  box-shadow: 0 0 0 0.25rem rgba(74, 111, 220, 0.25);
+}
+
+/* Media container styling */
+.media-container img,
+.media-container video {
+  background-color: #f8f9fa;
+}

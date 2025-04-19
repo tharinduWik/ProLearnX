@@ -2,7 +2,9 @@ package com.example.prolearnx.controller;
 
 import com.example.prolearnx.model.Post;
 import com.example.prolearnx.service.PostService;
+import com.mongodb.MongoException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -47,6 +49,10 @@ public class PostController {
             
             Post createdPost = postService.createPost(userId, description, files, isVideo);
             return ResponseEntity.ok(createdPost);
+        } catch (MongoException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body("Database connection failed: " + e.getMessage());
         } catch (IOException e) {
             e.printStackTrace();
             return ResponseEntity.badRequest().body("Error uploading files: " + e.getMessage());
@@ -97,6 +103,10 @@ public class PostController {
             System.out.println("Post creation completed in: " + (endTime - startTime) + "ms");
             
             return ResponseEntity.ok(createdPost);
+        } catch (MongoException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body("Database connection failed: " + e.getMessage());
         } catch (ClassCastException e) {
             e.printStackTrace();
             return ResponseEntity.badRequest().body("Invalid data format: " + e.getMessage());
@@ -111,9 +121,14 @@ public class PostController {
         try {
             List<Post> posts = postService.getAllPosts();
             return ResponseEntity.ok(posts);
+        } catch (MongoException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body("Database connection failed: " + e.getMessage());
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.status(500).body("Error retrieving posts: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error retrieving posts: " + e.getMessage());
         }
     }
     
@@ -122,9 +137,14 @@ public class PostController {
         try {
             List<Post> posts = postService.getUserPosts(userId);
             return ResponseEntity.ok(posts);
+        } catch (MongoException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body("Database connection failed: " + e.getMessage());
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.status(500).body("Error retrieving user posts: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error retrieving user posts: " + e.getMessage());
         }
     }
     
@@ -133,6 +153,10 @@ public class PostController {
         try {
             Post post = postService.getPostById(postId);
             return ResponseEntity.ok(post);
+        } catch (MongoException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body("Database connection failed: " + e.getMessage());
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(404).body("Post not found: " + e.getMessage());
@@ -144,6 +168,10 @@ public class PostController {
         try {
             postService.deletePost(postId);
             return ResponseEntity.ok().build();
+        } catch (MongoException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body("Database connection failed: " + e.getMessage());
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.badRequest().body("Error deleting post: " + e.getMessage());

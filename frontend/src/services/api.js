@@ -8,7 +8,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 120000 // Increase timeout to 120 seconds (2 minutes)
+  timeout: 30000 // 30 seconds timeout
 });
 
 // Add request interceptor to include auth token if available
@@ -32,27 +32,34 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     console.error('API Error:', error);
-    
-    // Specific handling for timeout errors
+
     if (error.code === 'ECONNABORTED') {
       console.error('Request timeout. The server is taking too long to respond.');
+      error.friendlyMessage = 'Request timed out. Please try again later.';
     } else if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
       console.error('Response data:', error.response.data);
       console.error('Response status:', error.response.status);
-      
-      // Log more detailed MongoDB errors if present
-      if (typeof error.response.data === 'string' && 
-          (error.response.data.includes('MongoDB') || error.response.data.includes('SSLException'))) {
-        console.error('MongoDB Connection Error Detected');
+
+      if (error.response.status === 503) {
+        error.friendlyMessage = 'Database is currently unavailable. Please try again later.';
+      } else if (error.response.status === 401) {
+        error.friendlyMessage = 'Unauthorized. Please log in again.';
+      } else if (error.response.data && typeof error.response.data === 'string') {
+        if (error.response.data.includes('MongoDB') || error.response.data.includes('SSLException')) {
+          console.error('MongoDB Connection Error Detected');
+          error.friendlyMessage = 'Database connection error occurred. Please try again later.';
+        } else {
+          error.friendlyMessage = error.response.data;
+        }
+      } else {
+        error.friendlyMessage = `Error ${error.response.status}: ${error.message}`;
       }
     } else if (error.request) {
-      // The request was made but no response was received
       console.error('No response received:', error.request);
+      error.friendlyMessage = 'No response from server. Please check your connection.';
     } else {
-      // Something happened in setting up the request that triggered an Error
       console.error('Request error:', error.message);
+      error.friendlyMessage = error.message;
     }
     return Promise.reject(error);
   }
@@ -68,12 +75,12 @@ export const userService = {
 export const postService = {
   createPost: (formData) => {
     console.log("Creating post with form data:", formData);
-    // Set longer timeout for file uploads (3 minutes)
+    // Set longer timeout for file uploads (1 minute)
     return axios.post(`${API_URL}/posts`, formData, {
       headers: { 
         'Content-Type': 'multipart/form-data'
       },
-      timeout: 180000, // 3 minutes for file uploads
+      timeout: 60000, // 1 minute for file uploads
       onUploadProgress: (progressEvent) => {
         // Optional progress tracking
         const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -85,12 +92,7 @@ export const postService = {
   // New method for creating posts with pre-uploaded media URLs
   createPostWithUrls: (postData) => {
     console.log("Creating post with URLs:", postData);
-    return apiClient.post('/posts/with-urls', JSON.stringify(postData), {
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      timeout: 90000 // 90 seconds specifically for this operation
-    });
+    return apiClient.post('/posts/with-urls', postData);
   },
   
   getAllPosts: () => apiClient.get('/posts'),

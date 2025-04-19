@@ -7,7 +7,7 @@ import { toast } from 'react-toastify';
 import { AuthContext } from '../../context/AuthContext';
 import { postService } from '../../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faUpload, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faUpload, faTrash, faSync } from '@fortawesome/free-solid-svg-icons';
 import { storage } from '../../firebase/config';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -18,6 +18,8 @@ const CreatePost = () => {
   const [error, setError] = useState('');
   const [isVideo, setIsVideo] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadedMediaUrls, setUploadedMediaUrls] = useState([]);
+  const [step, setStep] = useState('upload'); // 'upload' or 'create'
 
   const validationSchema = Yup.object({
     description: Yup.string().required('Description is required'),
@@ -48,7 +50,6 @@ const CreatePost = () => {
       )
   });
 
-  // Function to handle direct Firebase Storage upload
   const uploadFileToFirebase = async (file) => {
     try {
       const mediaName = `post_${currentUser.id}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
@@ -65,18 +66,16 @@ const CreatePost = () => {
     }
   };
 
-  const handleSubmit = async (values, { setSubmitting }) => {
+  const handleUploadMedia = async (values, { setSubmitting }) => {
     setError('');
     setIsUploading(true);
     
     try {
-      // First, upload files directly to Firebase Storage
       const mediaUrls = [];
       const mediaFiles = Array.from(values.files);
       
       toast.info('Uploading files to storage...', { autoClose: false, toastId: 'uploading' });
       
-      // Upload each file to Firebase Storage
       for (const file of mediaFiles) {
         const url = await uploadFileToFirebase(file);
         mediaUrls.push(url);
@@ -85,60 +84,97 @@ const CreatePost = () => {
       toast.dismiss('uploading');
       toast.success('Files uploaded successfully!');
       
-      // Now create the post with the URLs instead of files
-      const postData = {
-        userId: currentUser.id,
-        description: values.description,
-        isVideo: isVideo,
-        mediaUrls: mediaUrls
-      };
-      
-      // Send the post data to the backend
-      await postService.createPostWithUrls(postData);
-      toast.success('Post created successfully!');
-      navigate('/');
+      setUploadedMediaUrls(mediaUrls);
+      setStep('create');
     } catch (err) {
-      console.error('Post creation error:', err);
+      console.error('Media upload error:', err);
       
-      // Handle Firebase Storage errors
       if (err.code && err.code.startsWith('storage/')) {
         setError(`Firebase Storage error: ${err.message}`);
         toast.error('Storage upload failed');
-      } else if (err.response?.status === 403) {
-        // Handle API permission errors
-        setError(
-          'Access denied. You may not have permission to perform this action.'
-        );
-        toast.error('Access denied');
       } else {
-        // Handle other errors
-        setError(
-          err.response?.data?.message || 
-          err.message || 
-          'Failed to create post. Please try again.'
-        );
-        toast.error('Failed to create post');
+        setError(err.message || 'Failed to upload media. Please try again.');
+        toast.error('Failed to upload media');
       }
     } finally {
+      toast.dismiss('uploading');
       setIsUploading(false);
       setSubmitting(false);
     }
   };
 
+  const handleCreatePost = async (values) => {
+    setError('');
+    setIsUploading(true);
+    
+    try {
+      const postData = {
+        userId: currentUser.id,
+        description: values.description,
+        isVideo: isVideo,
+        mediaUrls: uploadedMediaUrls
+      };
+      
+      console.log("Creating post with data:", postData);
+      toast.info('Saving post...', { autoClose: false, toastId: 'saving' });
+      
+      const response = await postService.createPostWithUrls(postData);
+      
+      toast.dismiss('saving');
+      console.log("Server response:", response.data);
+      toast.success('Post created successfully!');
+      navigate('/');
+    } catch (err) {
+      console.error('Post creation error:', err);
+      
+      if (err.code === 'ECONNABORTED') {
+        setError('The server is taking too long to respond. Your media has been uploaded but the post could not be created.');
+        toast.error('Server timeout. Please try again to create your post with the uploaded media.');
+      } else if (err.response) {
+        const errorMessage = err.response.data || err.message;
+        setError(`Server error: ${err.response.status} - ${errorMessage}`);
+        
+        if (errorMessage.includes('MongoDB') || errorMessage.includes('SSLException')) {
+          setError('Database connection error. Please try again later or contact support.');
+        }
+        
+        toast.error(`Server error: ${err.response.status}`);
+      } else {
+        setError(err.message || 'Failed to create post. Please try again.');
+        toast.error('Failed to create post');
+      }
+    } finally {
+      toast.dismiss('saving');
+      setIsUploading(false);
+    }
+  };
+
+  const handleSubmit = async (values, { setSubmitting }) => {
+    if (step === 'upload') {
+      await handleUploadMedia(values, { setSubmitting });
+    } else {
+      await handleCreatePost(values);
+      setSubmitting(false);
+    }
+  };
+
+  const handleRetry = () => {
+    setError('');
+    setStep('upload');
+    setUploadedMediaUrls([]);
+  };
+
   const handleFileChange = (event, setFieldValue) => {
     const files = event.currentTarget.files;
     
-    // Check if any file is a video
     const videoExists = Array.from(files).some(file => file.type.startsWith('video/'));
     setIsVideo(videoExists);
     
-    // Validate file count
     if (files.length > 3) {
       toast.error('You can only upload a maximum of 3 files');
       return;
     }
     
-    // Validate if multiple videos are selected
     if (videoExists && Array.from(files).filter(file => file.type.startsWith('video/')).length > 1) {
       toast.error('You can only upload one video');
       return;
@@ -146,7 +182,6 @@ const CreatePost = () => {
     
     setFieldValue('files', files);
     
-    // Generate previews
     const fileArray = Array.from(files).map(file => ({
       file,
       preview: URL.createObjectURL(file),
@@ -155,7 +190,6 @@ const CreatePost = () => {
     
     setPreviews(fileArray);
     
-    // Check video duration when video is selected
     if (videoExists) {
       const videoFile = Array.from(files).find(file => file.type.startsWith('video/'));
       const videoElement = document.createElement('video');
@@ -177,11 +211,9 @@ const CreatePost = () => {
   const removeFile = (index, setFieldValue, values) => {
     const newFiles = Array.from(values.files).filter((_, i) => i !== index);
     
-    // Update isVideo flag
     const newIsVideo = newFiles.some(file => file.type.startsWith('video/'));
     setIsVideo(newIsVideo);
     
-    // Create a new FileList-like object
     const dataTransfer = new DataTransfer();
     newFiles.forEach(file => {
       dataTransfer.items.add(file);
@@ -189,7 +221,6 @@ const CreatePost = () => {
     
     setFieldValue('files', dataTransfer.files);
     
-    // Update previews
     setPreviews(previews.filter((_, i) => i !== index));
   };
 
@@ -199,17 +230,33 @@ const CreatePost = () => {
         <Col md={8}>
           <Card className="shadow">
             <Card.Header className="bg-primary text-white">
-              <h3>Create New Post</h3>
+              <h3>{step === 'upload' ? 'Upload Media' : 'Create Post'}</h3>
+              {step === 'create' && (
+                <div className="mt-2 small">
+                  Media uploaded successfully! Now create your post.
+                </div>
+              )}
             </Card.Header>
             <Card.Body>
               {error && (
                 <Alert variant="danger">
                   <p><strong>Error:</strong> {error}</p>
-                  {error.includes('Storage permission denied') && (
+                  {(error.includes('Database connection') || error.includes('MongoDB')) && (
                     <p className="mt-2 mb-0">
-                      <small>This is likely a server-side configuration issue with Firebase Storage permissions.
-                      Try again later or reach out to technical support.</small>
+                      <small>This appears to be a server database connection issue. Your media has been uploaded successfully.
+                      You can try again later using the same media.</small>
                     </p>
+                  )}
+                  {step === 'create' && (
+                    <Button 
+                      variant="outline-danger" 
+                      size="sm" 
+                      className="mt-2"
+                      onClick={handleRetry}
+                    >
+                      <FontAwesomeIcon icon={faSync} className="me-1" />
+                      Start Over
+                    </Button>
                   )}
                 </Alert>
               )}
@@ -218,6 +265,7 @@ const CreatePost = () => {
                 initialValues={{ description: '', files: null }}
                 validationSchema={validationSchema}
                 onSubmit={handleSubmit}
+                enableReinitialize={true}
               >
                 {({
                   handleSubmit,
@@ -247,26 +295,28 @@ const CreatePost = () => {
                       </Form.Control.Feedback>
                     </Form.Group>
                     
-                    <Form.Group className="mb-3">
-                      <Form.Label>Upload Media (Max 3 files, images or videos)</Form.Label>
-                      <Form.Control
-                        type="file"
-                        name="files"
-                        onChange={(e) => handleFileChange(e, setFieldValue)}
-                        onBlur={handleBlur}
-                        isInvalid={touched.files && !!errors.files}
-                        accept="image/*,video/*"
-                        multiple
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {errors.files}
-                      </Form.Control.Feedback>
-                      <Form.Text className="text-muted">
-                        You can upload up to 3 images, or 1 video (max 30 seconds)
-                      </Form.Text>
-                    </Form.Group>
+                    {step === 'upload' && (
+                      <Form.Group className="mb-3">
+                        <Form.Label>Upload Media (Max 3 files, images or videos)</Form.Label>
+                        <Form.Control
+                          type="file"
+                          name="files"
+                          onChange={(e) => handleFileChange(e, setFieldValue)}
+                          onBlur={handleBlur}
+                          isInvalid={touched.files && !!errors.files}
+                          accept="image/*,video/*"
+                          multiple
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {errors.files}
+                        </Form.Control.Feedback>
+                        <Form.Text className="text-muted">
+                          You can upload up to 3 images, or 1 video (max 30 seconds)
+                        </Form.Text>
+                      </Form.Group>
+                    )}
                     
-                    {previews.length > 0 && (
+                    {step === 'upload' && previews.length > 0 && (
                       <div className="mb-3">
                         <h5>Media Preview</h5>
                         <div className="d-flex flex-wrap gap-2">
@@ -301,6 +351,33 @@ const CreatePost = () => {
                       </div>
                     )}
                     
+                    {step === 'create' && uploadedMediaUrls.length > 0 && (
+                      <div className="mb-3">
+                        <h5>Uploaded Media</h5>
+                        <div className="d-flex flex-wrap gap-2">
+                          {uploadedMediaUrls.map((url, index) => (
+                            <div key={index}>
+                              {isVideo ? (
+                                <video 
+                                  src={url} 
+                                  style={{ width: '150px', height: '150px', objectFit: 'cover' }}
+                                  className="rounded"
+                                  controls
+                                />
+                              ) : (
+                                <img 
+                                  src={url} 
+                                  alt={`Uploaded ${index}`} 
+                                  style={{ width: '150px', height: '150px', objectFit: 'cover' }}
+                                  className="rounded"
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="d-grid">
                       <Button 
                         variant="primary" 
@@ -308,10 +385,12 @@ const CreatePost = () => {
                         disabled={isSubmitting || isUploading}
                         className="mt-3"
                       >
-                        {isSubmitting || isUploading ? 'Creating...' : (
+                        {isSubmitting || isUploading ? (
+                          step === 'upload' ? 'Uploading...' : 'Creating Post...'
+                        ) : (
                           <>
-                            <FontAwesomeIcon icon={faUpload} className="me-2" />
-                            Create Post
+                            <FontAwesomeIcon icon={step === 'upload' ? faUpload : faSync} className="me-2" />
+                            {step === 'upload' ? 'Upload Media' : 'Create Post'}
                           </>
                         )}
                       </Button>

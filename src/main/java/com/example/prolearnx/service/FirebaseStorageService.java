@@ -79,8 +79,8 @@ public class FirebaseStorageService {
             
             System.out.println("Uploading file: " + filename + " to bucket: " + bucketName);
             
-            // Upload the file to Firebase Storage
-            Blob blob = storage.create(blobInfo, file.getBytes());
+            // Upload the file to Firebase Storage and store the Blob object
+            storage.create(blobInfo, file.getBytes());
             
             // Return the public URL of the file
             String downloadUrl = "https://storage.googleapis.com/" + bucketName + "/" + filename;

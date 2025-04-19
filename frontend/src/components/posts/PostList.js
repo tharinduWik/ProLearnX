@@ -17,15 +17,22 @@ const PostList = () => {
   }, []);
 
   const fetchPosts = async () => {
+    setLoading(true);
     try {
       const response = await postService.getAllPosts();
       setPosts(response.data);
     } catch (err) {
-      setError('Failed to load posts. Please try again later.');
       console.error('Error fetching posts:', err);
+      setError('Failed to load posts. Please try again later.');
+      toast.error('Failed to load posts. Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRetry = () => {
+    setError(null);
+    fetchPosts();
   };
 
   const handleDeletePost = async (postId) => {
@@ -66,9 +73,18 @@ const PostList = () => {
         </Link>
       </div>
       
-      {error && <Alert variant="danger">{error}</Alert>}
+      {error && (
+        <Alert variant="danger">
+          {error}
+          <div className="mt-2">
+            <Button variant="outline-danger" size="sm" onClick={handleRetry}>
+              Retry
+            </Button>
+          </div>
+        </Alert>
+      )}
       
-      {!loading && posts.length === 0 && (
+      {!loading && !error && posts.length === 0 && (
         <div className="text-center p-5 bg-light rounded">
           <h4>No posts yet</h4>
           <p>Be the first to share your knowledge!</p>

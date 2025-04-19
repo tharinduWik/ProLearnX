@@ -73,15 +73,33 @@ public class PostController {
                 return ResponseEntity.badRequest().body("No media URLs provided");
             }
             
+            // Make sure all required fields are present
+            if (postData.get("userId") == null || postData.get("description") == null) {
+                return ResponseEntity.badRequest().body("Missing required fields: userId or description");
+            }
+            
+            // Default isVideo to false if not provided
+            boolean isVideo = postData.get("isVideo") != null ? (Boolean) postData.get("isVideo") : false;
+            
             // Create post with pre-uploaded media URLs
+            // This operation might be taking too long, so log timing
+            long startTime = System.currentTimeMillis();
+            System.out.println("Starting to create post at: " + startTime);
+            
             Post createdPost = postService.createPostWithUrls(
                 (String) postData.get("userId"),
                 (String) postData.get("description"),
                 mediaUrls,
-                (Boolean) postData.get("isVideo")
+                isVideo
             );
             
+            long endTime = System.currentTimeMillis();
+            System.out.println("Post creation completed in: " + (endTime - startTime) + "ms");
+            
             return ResponseEntity.ok(createdPost);
+        } catch (ClassCastException e) {
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body("Invalid data format: " + e.getMessage());
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.badRequest().body("Error creating post: " + e.getMessage());
@@ -89,18 +107,36 @@ public class PostController {
     }
     
     @GetMapping
-    public ResponseEntity<List<Post>> getAllPosts() {
-        return ResponseEntity.ok(postService.getAllPosts());
+    public ResponseEntity<?> getAllPosts() {
+        try {
+            List<Post> posts = postService.getAllPosts();
+            return ResponseEntity.ok(posts);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Error retrieving posts: " + e.getMessage());
+        }
     }
     
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<Post>> getUserPosts(@PathVariable String userId) {
-        return ResponseEntity.ok(postService.getUserPosts(userId));
+    public ResponseEntity<?> getUserPosts(@PathVariable String userId) {
+        try {
+            List<Post> posts = postService.getUserPosts(userId);
+            return ResponseEntity.ok(posts);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Error retrieving user posts: " + e.getMessage());
+        }
     }
     
     @GetMapping("/{postId}")
-    public ResponseEntity<Post> getPost(@PathVariable String postId) {
-        return ResponseEntity.ok(postService.getPostById(postId));
+    public ResponseEntity<?> getPost(@PathVariable String postId) {
+        try {
+            Post post = postService.getPostById(postId);
+            return ResponseEntity.ok(post);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(404).body("Post not found: " + e.getMessage());
+        }
     }
     
     @DeleteMapping("/{postId}")
@@ -109,6 +145,7 @@ public class PostController {
             postService.deletePost(postId);
             return ResponseEntity.ok().build();
         } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.badRequest().body("Error deleting post: " + e.getMessage());
         }
     }
